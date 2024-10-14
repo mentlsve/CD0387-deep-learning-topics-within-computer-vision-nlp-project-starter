@@ -1,41 +1,78 @@
-# Image Classification using AWS SageMaker
+# Dog breed image classification using AWS SageMaker
 
-Use AWS Sagemaker to train a pretrained model that can perform image classification by using the Sagemaker profiling, debugger, hyperparameter tuning and other good ML engineering practices. This can be done on either the provided dog breed classication data set or one of your choice.
+Fine-tuning of a ResNet-50 CNN to predict the breed of a dog based on an image from the dog. 
+The focus is less on the model itself but rather how to fine-tune and perform hyperparameter optimization with AWS SageMaker.
 
-## Project Set Up and Installation
-Enter AWS through the gateway in the course and open SageMaker Studio. 
-Download the starter files.
-Download/Make the dataset available. 
+## Files
+
+* `train_model.py` is for the training job which demonstrates use of SageMaker Profiler and Debugger
+* `hpo.py` is for the training job which demonstrates how to perform hyperparameter optimization
+* `inference.py` is the code required by the endpoint for on-demand inference. It sets up the model with the fine-tuned weights and performs perparation of inference input.
+* `train_and_deploy.ipynb` is the notebook used to prepare data, trigger training jobs and deploy the endpoint
 
 ## Dataset
-The provided dataset is the dogbreed classification dataset which can be found in the classroom.
-The project is designed to be dataset independent so if there is a dataset that is more interesting or relevant to your work, you are welcome to use it to complete the project.
 
-### Access
-Upload the data to an S3 bucket through the AWS Gateway so that SageMaker has access to the data. 
+The dataset provided by Udacity has images for 133 different breeds.
 
 ## Hyperparameter Tuning
-What kind of model did you choose for this experiment and why? Give an overview of the types of parameters and their ranges used for the hyperparameter search
 
-Remember that your README should:
-- Include a screenshot of completed training jobs
-- Logs metrics during the training process
-- Tune at least two hyperparameters
-- Retrieve the best best hyperparameters from all your training jobs
+Hyperparameter optimizaiton was done for the `learning rate` and `batch size` with the followint values
+
+```
+hyperparameter_ranges = {
+    'lr': ContinuousParameter(0.001,0.01),
+    'batch-size': CategoricalParameter([16, 32, 48])
+}
+```
+
+8 combinations were tested 
+
+![hpo-training-job](screenshots/hpo-training-job.png)
+
+and the best one was
+
+![best-hyperparameter](screenshots/best-hyperparameter.png)
+
 
 ## Debugging and Profiling
-**TODO**: Give an overview of how you performed model debugging and profiling in Sagemaker
+
+I configured these built-in rules for debugging my model
+```
+rules = [
+    Rule.sagemaker(rule_configs.loss_not_decreasing()),  
+    Rule.sagemaker(rule_configs.vanishing_gradient()),
+    Rule.sagemaker(rule_configs.overfit()),
+    Rule.sagemaker(rule_configs.overtraining()),
+    Rule.sagemaker(rule_configs.poor_weight_initialization()),
+    ProfilerRule.sagemaker(rule_configs.LowGPUUtilization()),
+    ProfilerRule.sagemaker(rule_configs.ProfilerReport()) 
+]
+```
+
+With the help of that output it was visible that training should have stopped earlier
+
+![cross-entropy-loss](screenshots/cross-entropy-loss.png)
+
 
 ### Results
-**TODO**: What are the results/insights did you get by profiling/debugging your model?
-
-**TODO** Remember to provide the profiler html/pdf file in your submission.
-
+Link to [SageMaker Debugger Profiling Report](ProfilerReport/profiler-output/profiler-report.html)
 
 ## Model Deployment
-**TODO**: Give an overview of the deployed model and instructions on how to query the endpoint with a sample input.
 
-**TODO** Remember to provide a screenshot of the deployed active endpoint in Sagemaker.
+For model deployment the functions 
 
-## Standout Suggestions
-**TODO (Optional):** This is where you can provide information about any standout suggestions that you have attempted.
+* `model_fn`: Specifies the same network architecture as used during training and then loads the weights with `model.load_state_dict()`
+* `input_fn`: Performs same input processing (resize, crop, scaling, normalization) as during testing and valication
+* `predict_fn`: Passes the output of `input_fn` to the model.
+
+were defined in the entry point `inference.py` 
+
+![deployed-endpoint](screenshots/deployed-endpoint.png)
+
+With the helper function which converted the loss response to a probability the endpoint was queried
+
+![prediction-sample](screenshots/prediction-sample.png)
+
+Prediction time was around ~ 100ms
+
+![invocation-log](screenshots/invocation-log.png)
